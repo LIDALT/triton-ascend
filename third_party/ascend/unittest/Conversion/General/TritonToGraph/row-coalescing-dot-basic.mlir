@@ -1,11 +1,12 @@
 // RUN: triton-opt --split-input-file --verify-each %s -graph-optimize='rule-mask=8' -canonicalize -cse -o %t
 // RUN: FileCheck %s < %t
-// RUN: triton-opt --split-input-file --verify-each %s -graph-optimize='rule-mask=8 compile-mode=simt_only' -canonicalize -cse | FileCheck %s
+// RUN: triton-opt --split-input-file --verify-each %s -graph-optimize='rule-mask=8 compile-mode=simt_only' -canonicalize -cse -o %t.simt
 // RUN: triton-opt --split-input-file --verify-each %t -graph-optimize='rule-mask=8' -canonicalize -cse -o %t.twice
 // RUN: diff %t %t.twice
 // RUN: triton-opt --split-input-file --verify-each %s -graph-optimize='rule-mask=0' -canonicalize -cse -o %t.disabled
 // RUN: triton-opt --split-input-file %s -canonicalize -cse -o %t.control
 // RUN: diff %t.control %t.disabled
+// RUN: diff %t.control %t.simt
 
 // Merge independent dot rows while keeping the RHS shared; preserve per-row trip counts.
 // CHECK: module attributes {{.*}}hacc.coalesce_factor = 8 : i32

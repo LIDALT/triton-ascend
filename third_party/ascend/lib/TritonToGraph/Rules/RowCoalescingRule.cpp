@@ -432,14 +432,14 @@ public:
   LogicalResult findCandidates(
       GraphOptimizationContext &context,
       SmallVectorImpl<std::unique_ptr<RewritePlan>> &plans) override {
-    if (auto plan = createDotRowCoalescingPlan(context.getFunction(),
-                                               context.getEpoch())) {
-      plans.push_back(std::move(plan));
+    // The legacy pattern is enabled only for simt_only. Dot row coalescing
+    // belongs to the non-pure-SIMT path and must not override that pattern.
+    if (!enableLegacyPattern) {
+      if (auto plan = createDotRowCoalescingPlan(context.getFunction(),
+                                                 context.getEpoch()))
+        plans.push_back(std::move(plan));
       return success();
     }
-
-    if (!enableLegacyPattern)
-      return success();
 
     if (std::optional<RowCandidate> candidate =
             analyzeRow(context.getFunction(),
