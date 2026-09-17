@@ -20,6 +20,7 @@
  * THE SOFTWARE.
  */
 
+#include "TritonToGraph/DotRowCoalescing.h"
 #include "TritonToGraph/GraphOptimizationRule.h"
 #include "TritonToGraph/LegacyMemoryAccess/RowCoalescing.h"
 #include "TritonToGraph/ProgramAxisDependenceAnalysis.h"
@@ -414,7 +415,12 @@ private:
 };
 
 class RowCoalescingRule final : public GraphOptimizationRule {
+  bool enableLegacyPattern;
+
 public:
+  explicit RowCoalescingRule(bool enableLegacyPattern)
+      : enableLegacyPattern(enableLegacyPattern) {}
+
   GraphOptimizationRuleId getId() const override {
     return GraphOptimizationRuleId::RowCoalescing;
   }
@@ -426,6 +432,15 @@ public:
   LogicalResult findCandidates(
       GraphOptimizationContext &context,
       SmallVectorImpl<std::unique_ptr<RewritePlan>> &plans) override {
+    if (auto plan = createDotRowCoalescingPlan(context.getFunction(),
+                                               context.getEpoch())) {
+      plans.push_back(std::move(plan));
+      return success();
+    }
+
+    if (!enableLegacyPattern)
+      return success();
+
     if (std::optional<RowCandidate> candidate =
             analyzeRow(context.getFunction(),
                        &context.getProgramAxisDependenceAnalysis())) {
@@ -445,6 +460,7 @@ public:
 
 } // namespace
 
-std::unique_ptr<GraphOptimizationRule> cfg::createRowCoalescingRule() {
-  return std::make_unique<RowCoalescingRule>();
+std::unique_ptr<GraphOptimizationRule>
+cfg::createRowCoalescingRule(bool enableLegacy) {
+  return std::make_unique<RowCoalescingRule>(enableLegacy);
 }
