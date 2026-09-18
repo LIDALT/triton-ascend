@@ -8,6 +8,21 @@
 // RUN: diff %t.control %t.disabled
 // RUN: diff %t.control %t.simt
 
+// The same valid candidates must remain unchanged on non-A5 targets.
+// RUN: sed 's/Ascend950PR_9579/Ascend910B2/g' %s > %t.a2.mlir
+// RUN: triton-opt --split-input-file %t.a2.mlir -canonicalize -cse -o %t.a2.control
+// RUN: triton-opt --split-input-file --verify-each %t.a2.mlir -graph-optimize='rule-mask=8' -canonicalize -cse -o %t.a2
+// RUN: diff %t.a2.control %t.a2
+// RUN: sed 's/Ascend950PR_9579/Ascend910_9391/g' %s > %t.a3.mlir
+// RUN: triton-opt --split-input-file %t.a3.mlir -canonicalize -cse -o %t.a3.control
+// RUN: triton-opt --split-input-file --verify-each %t.a3.mlir -graph-optimize='rule-mask=8' -canonicalize -cse -o %t.a3
+// RUN: diff %t.a3.control %t.a3
+// Missing target information must not enable the A5-only pattern.
+// RUN: sed 's/hacc.target = #hacc.target<"Ascend950PR_9579">, //g' %s > %t.no-target.mlir
+// RUN: triton-opt --split-input-file %t.no-target.mlir -canonicalize -cse -o %t.no-target.control
+// RUN: triton-opt --split-input-file --verify-each %t.no-target.mlir -graph-optimize='rule-mask=8' -canonicalize -cse -o %t.no-target
+// RUN: diff %t.no-target.control %t.no-target
+
 // Merge independent dot rows while keeping the RHS shared; preserve per-row trip counts.
 // CHECK: module attributes {{.*}}hacc.coalesce_factor = 8 : i32
 // CHECK-LABEL: tt.func @one_dot_m16(
@@ -18,7 +33,7 @@
 // CHECK: arith.cmpi slt, {{.*}} : tensor<8xi32>
 // CHECK: arith.select {{.*}} : tensor<8x16x16xi1>, tensor<8x16x16xf32>
 // CHECK: tt.store {{.*}} : tensor<8x16x16x!tt.ptr<f32>>
-module attributes {hacc.grid_num_tiles = 64 : i32} {
+module attributes {hacc.target = #hacc.target<"Ascend950PR_9579">, hacc.grid_num_tiles = 64 : i32} {
   tt.func @one_dot_m16(%A: !tt.ptr<f16>, %B: !tt.ptr<f16>, %C: !tt.ptr<f32>, %count: i32) {
     %pid = tt.get_program_id x : i32
     %c0 = arith.constant 0 : i32
@@ -74,7 +89,7 @@ module attributes {hacc.grid_num_tiles = 64 : i32} {
 // CHECK: arith.cmpi slt, {{.*}} : tensor<8xi32>
 // CHECK: arith.select {{.*}} : tensor<8x16x16xi1>, tensor<8x16x16xf32>
 // CHECK: tt.store {{.*}} : tensor<8x16x16x!tt.ptr<f32>>
-module attributes {hacc.grid_num_tiles = 64 : i32} {
+module attributes {hacc.target = #hacc.target<"Ascend950PR_9579">, hacc.grid_num_tiles = 64 : i32} {
   tt.func @two_accumulators(%A: !tt.ptr<f16>, %B: !tt.ptr<f16>, %C: !tt.ptr<f32>, %count: i32) {
     %pid = tt.get_program_id x : i32
     %c0 = arith.constant 0 : i32
@@ -132,7 +147,7 @@ module attributes {hacc.grid_num_tiles = 64 : i32} {
 // CHECK: arith.cmpi slt, {{.*}} : tensor<8xi32>
 // CHECK: arith.select {{.*}} : tensor<8x16x16xi1>, tensor<8x16x16xf32>
 // CHECK: tt.store {{.*}} : tensor<8x16x16x!tt.ptr<f32>>
-module attributes {hacc.grid_num_tiles = 64 : i32} {
+module attributes {hacc.target = #hacc.target<"Ascend950PR_9579">, hacc.grid_num_tiles = 64 : i32} {
   tt.func @commuted_monotonic_bound(%A: !tt.ptr<f16>, %B: !tt.ptr<f16>, %C: !tt.ptr<f32>, %count: i32) {
     %pid = tt.get_program_id x : i32
     %c0 = arith.constant 0 : i32
@@ -188,7 +203,7 @@ module attributes {hacc.grid_num_tiles = 64 : i32} {
 // CHECK: arith.cmpi slt, {{.*}} : tensor<4xi32>
 // CHECK: arith.select {{.*}} : tensor<4x16x16xi1>, tensor<4x16x16xf32>
 // CHECK: tt.store {{.*}} : tensor<4x16x16x!tt.ptr<f32>>
-module attributes {hacc.grid_num_tiles = 12 : i32} {
+module attributes {hacc.target = #hacc.target<"Ascend950PR_9579">, hacc.grid_num_tiles = 12 : i32} {
   tt.func @smaller_exact_grid_group(%A: !tt.ptr<f16>, %B: !tt.ptr<f16>, %C: !tt.ptr<f32>, %count: i32) {
     %pid = tt.get_program_id x : i32
     %c0 = arith.constant 0 : i32
@@ -241,7 +256,7 @@ module attributes {hacc.grid_num_tiles = 12 : i32} {
 // CHECK: scf.for
 // CHECK: %[[RHS:.*]] = tt.load {{.*}} : tensor<16x16x!tt.ptr<bf16>>
 // CHECK: tt.dot %{{.*}}, %[[RHS]], %{{.*}} : tensor<128x16xbf16> * tensor<16x16xbf16> -> tensor<128x16xf32>
-module attributes {hacc.grid_num_tiles = 64 : i32} {
+module attributes {hacc.target = #hacc.target<"Ascend950PR_9579">, hacc.grid_num_tiles = 64 : i32} {
   tt.func @bf16_dot(%A: !tt.ptr<bf16>, %B: !tt.ptr<bf16>, %C: !tt.ptr<f32>, %count: i32) {
     %pid = tt.get_program_id x : i32
     %c0 = arith.constant 0 : i32

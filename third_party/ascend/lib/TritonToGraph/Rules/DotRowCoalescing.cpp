@@ -22,6 +22,7 @@
 
 #include "TritonToGraph/DotRowCoalescing.h"
 
+#include "bishengir/Dialect/HACC/Utils/Utils.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -722,6 +723,11 @@ public:
 
 std::unique_ptr<RewritePlan>
 cfg::createDotRowCoalescingPlan(triton::FuncOp function, unsigned epoch) {
+  // Dot row coalescing is supported only on A5 (Ascend950).
+  auto module = function->getParentOfType<ModuleOp>();
+  if (!module || !hacc::utils::isAscend950(module))
+    return nullptr;
+
   auto candidate = matchDotRows(function);
   if (!candidate)
     return nullptr;

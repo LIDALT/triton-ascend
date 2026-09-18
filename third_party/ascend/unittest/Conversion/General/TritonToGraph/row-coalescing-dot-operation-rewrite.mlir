@@ -16,7 +16,7 @@
 // CHECK: tt.dot %{{.*}}, %[[RHS]], %{{.*}} : tensor<128x16xf16> * tensor<16x16xf16> -> tensor<128x16xf32>
 // CHECK: tt.trans {{.*}}order = array<i32: 0, 2, 1>
 // CHECK: tt.store {{.*}} : tensor<8x16x16x!tt.ptr<f32>>
-module attributes {hacc.grid_num_tiles = 64 : i32} {
+module attributes {hacc.target = #hacc.target<"Ascend950PR_9579">, hacc.grid_num_tiles = 64 : i32} {
   tt.func @reshape_transpose(%A: !tt.ptr<f16>, %B: !tt.ptr<f16>, %C: !tt.ptr<f32>, %count: i32) {
     %pid = tt.get_program_id x : i32
     %c0 = arith.constant 0 : i32

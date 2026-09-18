@@ -39,6 +39,7 @@ add_triton_library(TritonToGraph
   TritonToGraphPassIncGen
 
   LINK_LIBS PUBLIC
+  BiShengIRHACCUtils
   MLIRArithDialect
   MLIRBufferizationDialect
   MLIRControlFlowDialect

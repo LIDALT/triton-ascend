@@ -9,7 +9,7 @@
 // a row-vector condition cannot select a higher-rank row tensor directly.
 // A failed optional rewrite must not make valid input fail compilation.
 // odd_grid_fallback
-module attributes {hacc.grid_num_tiles = 13 : i32} {
+module attributes {hacc.target = #hacc.target<"Ascend950PR_9579">, hacc.grid_num_tiles = 13 : i32} {
   tt.func @odd_grid_fallback(%A: !tt.ptr<f16>, %B: !tt.ptr<f16>, %C: !tt.ptr<f32>, %count: i32) {
     %pid = tt.get_program_id x : i32
     %c0 = arith.constant 0 : i32
@@ -57,7 +57,7 @@ module attributes {hacc.grid_num_tiles = 13 : i32} {
 // -----
 
 // overflow_bound_fallback
-module attributes {hacc.grid_num_tiles = 64 : i32} {
+module attributes {hacc.target = #hacc.target<"Ascend950PR_9579">, hacc.grid_num_tiles = 64 : i32} {
   tt.func @overflow_bound_fallback(%A: !tt.ptr<f16>, %B: !tt.ptr<f16>, %C: !tt.ptr<f32>, %count: i32) {
     %pid = tt.get_program_id x : i32
     %c0 = arith.constant 0 : i32
@@ -106,7 +106,7 @@ module attributes {hacc.grid_num_tiles = 64 : i32} {
 // -----
 
 // overlapping_store_fallback
-module attributes {hacc.grid_num_tiles = 64 : i32} {
+module attributes {hacc.target = #hacc.target<"Ascend950PR_9579">, hacc.grid_num_tiles = 64 : i32} {
   tt.func @overlapping_store_fallback(%A: !tt.ptr<f16>, %B: !tt.ptr<f16>, %C: !tt.ptr<f32>, %count: i32) {
     %pid = tt.get_program_id x : i32
     %c0 = arith.constant 0 : i32
@@ -154,7 +154,7 @@ module attributes {hacc.grid_num_tiles = 64 : i32} {
 // -----
 
 // fp32_fallback
-module attributes {hacc.grid_num_tiles = 64 : i32} {
+module attributes {hacc.target = #hacc.target<"Ascend950PR_9579">, hacc.grid_num_tiles = 64 : i32} {
   tt.func @fp32_fallback(%A: !tt.ptr<f32>, %B: !tt.ptr<f32>, %C: !tt.ptr<f32>, %count: i32) {
     %pid = tt.get_program_id x : i32
     %c0 = arith.constant 0 : i32
@@ -202,7 +202,7 @@ module attributes {hacc.grid_num_tiles = 64 : i32} {
 // -----
 
 // unsafe_speculation_fallback
-module attributes {hacc.grid_num_tiles = 64 : i32} {
+module attributes {hacc.target = #hacc.target<"Ascend950PR_9579">, hacc.grid_num_tiles = 64 : i32} {
   tt.func @unsafe_speculation_fallback(%A: !tt.ptr<f16>, %B: !tt.ptr<f16>, %C: !tt.ptr<f32>, %count: i32) {
     %pid = tt.get_program_id x : i32
     %c0 = arith.constant 0 : i32
@@ -252,7 +252,7 @@ module attributes {hacc.grid_num_tiles = 64 : i32} {
 // -----
 
 // captured_combiner_fallback
-module attributes {hacc.grid_num_tiles = 64 : i32} {
+module attributes {hacc.target = #hacc.target<"Ascend950PR_9579">, hacc.grid_num_tiles = 64 : i32} {
   tt.func @captured_combiner_fallback(%A: !tt.ptr<f16>, %B: !tt.ptr<f16>, %C: !tt.ptr<f32>, %count: i32) {
     %pid = tt.get_program_id x : i32
     %c0 = arith.constant 0 : i32
@@ -309,7 +309,7 @@ module attributes {hacc.grid_num_tiles = 64 : i32} {
 // -----
 
 // scalar_select_preflight_fallback
-module attributes {hacc.grid_num_tiles = 64 : i32} {
+module attributes {hacc.target = #hacc.target<"Ascend950PR_9579">, hacc.grid_num_tiles = 64 : i32} {
   tt.func @scalar_select_preflight_fallback(%A: !tt.ptr<f16>, %B: !tt.ptr<f16>, %C: !tt.ptr<f32>, %count: i32) {
     %pid = tt.get_program_id x : i32
     %c0 = arith.constant 0 : i32
@@ -359,7 +359,7 @@ module attributes {hacc.grid_num_tiles = 64 : i32} {
 // -----
 
 // row_rhs_load_fallback
-module attributes {hacc.grid_num_tiles = 64 : i32} {
+module attributes {hacc.target = #hacc.target<"Ascend950PR_9579">, hacc.grid_num_tiles = 64 : i32} {
   tt.func @row_rhs_load_fallback(%A: !tt.ptr<f16>, %B: !tt.ptr<f16>, %C: !tt.ptr<f32>, %count: i32) {
     %pid = tt.get_program_id x : i32
     %c0 = arith.constant 0 : i32
@@ -407,7 +407,7 @@ module attributes {hacc.grid_num_tiles = 64 : i32} {
 // -----
 
 // loop_carried_rhs_fallback
-module attributes {hacc.grid_num_tiles = 64 : i32} {
+module attributes {hacc.target = #hacc.target<"Ascend950PR_9579">, hacc.grid_num_tiles = 64 : i32} {
   tt.func @loop_carried_rhs_fallback(%A: !tt.ptr<f16>, %B: !tt.ptr<f16>, %C: !tt.ptr<f32>, %count: i32) {
     %pid = tt.get_program_id x : i32
     %c0 = arith.constant 0 : i32
@@ -455,7 +455,7 @@ module attributes {hacc.grid_num_tiles = 64 : i32} {
 // -----
 
 // row_dependent_load_mask_fallback
-module attributes {hacc.grid_num_tiles = 64 : i32} {
+module attributes {hacc.target = #hacc.target<"Ascend950PR_9579">, hacc.grid_num_tiles = 64 : i32} {
   tt.func @row_dependent_load_mask_fallback(%A: !tt.ptr<f16>, %B: !tt.ptr<f16>, %C: !tt.ptr<f32>, %count: i32) {
     %pid = tt.get_program_id x : i32
     %c0 = arith.constant 0 : i32
@@ -506,7 +506,7 @@ module attributes {hacc.grid_num_tiles = 64 : i32} {
 // -----
 
 // missing_grid
-module {
+module attributes {hacc.target = #hacc.target<"Ascend950PR_9579">} {
   tt.func @missing_grid(%A: !tt.ptr<f16>, %B: !tt.ptr<f16>, %C: !tt.ptr<f32>, %count: i32) {
     %pid = tt.get_program_id x : i32
     %c0 = arith.constant 0 : i32
@@ -554,7 +554,7 @@ module {
 // -----
 
 // Reductions are unsupported, even with self-contained combiners.
-module attributes {hacc.grid_num_tiles = 64 : i32} {
+module attributes {hacc.target = #hacc.target<"Ascend950PR_9579">, hacc.grid_num_tiles = 64 : i32} {
   tt.func @loop_reduction(%A: !tt.ptr<f16>, %B: !tt.ptr<f16>, %C: !tt.ptr<f32>, %count: i32) {
     %pid = tt.get_program_id x : i32
     %c0 = arith.constant 0 : i32
@@ -607,7 +607,7 @@ module attributes {hacc.grid_num_tiles = 64 : i32} {
 }
 // -----
 
-module attributes {hacc.grid_num_tiles = 64 : i32} {
+module attributes {hacc.target = #hacc.target<"Ascend950PR_9579">, hacc.grid_num_tiles = 64 : i32} {
   tt.func @scalar_epilogue(%A: !tt.ptr<f16>, %B: !tt.ptr<f16>, %C: !tt.ptr<f32>, %count: i32) {
     %pid = tt.get_program_id x : i32
     %c0 = arith.constant 0 : i32
@@ -661,7 +661,7 @@ module attributes {hacc.grid_num_tiles = 64 : i32} {
 }
 // -----
 
-module attributes {hacc.grid_num_tiles = 64 : i32} {
+module attributes {hacc.target = #hacc.target<"Ascend950PR_9579">, hacc.grid_num_tiles = 64 : i32} {
   tt.func @tuple_reduction(%A: !tt.ptr<f16>, %B: !tt.ptr<f16>, %C: !tt.ptr<f32>, %count: i32) {
     %pid = tt.get_program_id x : i32
     %c0 = arith.constant 0 : i32
