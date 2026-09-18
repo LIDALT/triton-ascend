@@ -21,6 +21,7 @@
  */
 
 #include "TritonToGraph/DotRowCoalescing.h"
+#include "TritonToGraph/ProgramGridTransform.h"
 
 #include "bishengir/Dialect/HACC/Utils/Utils.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -54,8 +55,8 @@ namespace {
 
 // Internal RowCoalescing pattern for a counted, independent row matmul loop.
 // No kernel name, Python argument name, or public tuning option is inspected.
-// The launcher must supply the original static x-grid through the existing
-// hacc.grid_num_tiles contract. Select an exact divisor of the grid; indirect
+// A static x-grid selects an exact divisor. Without it, use the existing
+// original-grid hidden arguments and mask the final partial group. Indirect
 // scalar loads deliberately remain on the original path.
 
 constexpr llvm::StringLiteral kCoalesceFactorAttr = "hacc.coalesce_factor";
@@ -204,12 +205,13 @@ static int64_t chooseRowCoalescingFactor(int64_t grid, int64_t maxDotRows,
   // Profitability policy, not a correctness requirement. Bound the widened M
   // dimension and the largest materialized value, including pointer tensors.
   // This is deliberately conservative, not a claim about peak live UB use or
-  // an autotuned optimum. A non-divisible grid selects a smaller exact factor.
+  // an autotuned optimum. A known grid selects an exact factor; zero denotes
+  // a runtime extent whose partial group is masked.
   constexpr int64_t targetDotRows = 128;
   constexpr int64_t maxLiftedValueBytes = 128 * 1024;
 
   for (int64_t factor : {32, 16, 8, 4, 2}) {
-    if (grid % factor == 0 && maxDotRows <= targetDotRows / factor &&
+    if ((!grid || grid % factor == 0) && maxDotRows <= targetDotRows / factor &&
         maxTensorBytes <= maxLiftedValueBytes / factor) {
       return factor;
     }
@@ -222,12 +224,13 @@ struct RowCandidate {
   triton::FuncOp function;
   Operation *anchor = nullptr;
   int64_t rowsPerProgram = 1;
+  bool runtimeGrid = false;
 };
 
 static std::optional<RowCandidate> matchDotRows(triton::FuncOp fn) {
   ModuleOp module = fn->getParentOfType<ModuleOp>();
   auto grid = module->getAttrOfType<IntegerAttr>("hacc.grid_num_tiles");
-  if (!grid || grid.getInt() <= 0 || grid.getInt() > INT32_MAX ||
+  if ((grid && (grid.getInt() <= 0 || grid.getInt() > INT32_MAX)) ||
       !llvm::hasSingleElement(fn.getBody()) || !fn.isPublic() ||
       llvm::count_if(module.getOps<triton::FuncOp>(),
                      [](triton::FuncOp entry) { return entry.isPublic(); }) !=
@@ -329,6 +332,10 @@ static std::optional<RowCandidate> matchDotRows(triton::FuncOp fn) {
             triton::AddPtrOp, triton::TransOp, triton::ReshapeOp>(op))
       return;
     StringRef ns = op->getName().getDialectNamespace();
+    // A partial group evaluates arithmetic for inactive rows as well.
+    if (!grid && dependent && (ns == "arith" || ns == "math") &&
+        !isSpeculatable(op))
+      safe = false;
     if ((ns != "arith" && ns != "math") || op->getNumRegions())
       safe = false;
   });
@@ -341,7 +348,7 @@ static std::optional<RowCandidate> matchDotRows(triton::FuncOp fn) {
       getConstantIntValue(loop.getLowerBound()) != std::optional<int64_t>(0) ||
       (dependsOnValue(loop.getUpperBound(), pid.getResult()) &&
        !inferMonotonicBounds(loop.getUpperBound(), pid.getResult(),
-                             grid.getInt())))
+                             grid ? grid.getInt() : INT32_MAX)))
     return std::nullopt;
 
   // Merging unequal trip counts speculates pure arithmetic for inactive rows.
@@ -369,12 +376,12 @@ static std::optional<RowCandidate> matchDotRows(triton::FuncOp fn) {
   if (!step || *step <= 0)
     return std::nullopt;
 
-  int64_t rows =
-      chooseRowCoalescingFactor(grid.getInt(), maxDotRows, maxTensorBytes);
+  int64_t rows = chooseRowCoalescingFactor(grid ? grid.getInt() : 0, maxDotRows,
+                                           maxTensorBytes);
   if (rows <= 1)
     return std::nullopt;
 
-  return RowCandidate{fn, pid.getOperation(), rows};
+  return RowCandidate{fn, pid.getOperation(), rows, !grid};
 }
 
 // Lift only query-dependent values. Invariant K/V loads stay two-dimensional;
@@ -387,6 +394,7 @@ class DotRowBuilder {
   IRMapping valueMapping;
   // Scalar values evaluated at the last row to form the shared loop bound.
   IRMapping lastRowMapping;
+  Value validRows;
 
 public:
   DotRowBuilder(IRRewriter &rewriter, RowCandidate candidate)
@@ -416,6 +424,13 @@ public:
             op.getLoc(), base,
             rewriter.create<arith::ConstantIntOp>(
                 op.getLoc(), candidate.rowsPerProgram - 1, 32));
+        if (candidate.runtimeGrid) {
+          Value extent = fresh->getArgument(fresh->getNumArguments() - 2);
+          Value lastValid = rewriter.create<arith::SubIOp>(
+              op.getLoc(), extent,
+              rewriter.create<arith::ConstantIntOp>(op.getLoc(), 1, 32));
+          last = rewriter.create<arith::MinSIOp>(op.getLoc(), last, lastValid);
+        }
         lastRowMapping.map(op.getResult(0), last);
 
         auto t = getLiftedType(op.getResult(0).getType());
@@ -426,6 +441,14 @@ public:
             op.getResult(0),
             rewriter.create<arith::AddIOp>(op.getLoc(), start, lanes)
                 .getResult());
+        if (candidate.runtimeGrid) {
+          Value extent = fresh->getArgument(fresh->getNumArguments() - 2);
+          Value limit =
+              rewriter.create<triton::SplatOp>(op.getLoc(), t, extent);
+          validRows = rewriter.create<arith::CmpIOp>(
+              op.getLoc(), arith::CmpIPredicate::slt,
+              valueMapping.lookup(op.getResult(0)), limit);
+        }
         continue;
       }
 
@@ -527,6 +550,33 @@ private:
       return true;
     }
 
+    if (candidate.runtimeGrid) {
+      if (auto load = dyn_cast<triton::LoadOp>(op)) {
+        Value pointer = ensureRowDimension(load.getPtr());
+        Value mask = getMemoryMask(pointer, load.getMask());
+        auto type = getLiftedType(load.getType());
+        Value other = load.getOther()
+                          ? ensureRowDimension(load.getOther())
+                          : rewriter.create<arith::ConstantOp>(
+                                op->getLoc(), rewriter.getZeroAttr(type));
+        auto replacement = rewriter.create<triton::LoadOp>(
+            op->getLoc(), pointer, mask, other, load.getBoundaryCheck(),
+            load.getPadding(), load.getCache(), load.getEvict(),
+            load.getIsVolatile());
+        valueMapping.map(load.getResult(), replacement.getResult());
+        return true;
+      }
+
+      if (auto store = dyn_cast<triton::StoreOp>(op)) {
+        Value pointer = ensureRowDimension(store.getPtr());
+        rewriter.create<triton::StoreOp>(
+            op->getLoc(), pointer, ensureRowDimension(store.getValue()),
+            getMemoryMask(pointer, store.getMask()), store.getBoundaryCheck(),
+            store.getCache(), store.getEvict());
+        return true;
+      }
+    }
+
     SmallVector<Value> operands;
     for (Value v : op->getOperands())
       operands.push_back(ensureRowDimension(v));
@@ -540,6 +590,17 @@ private:
                         types, op->getAttrs());
     valueMapping.map(op->getResults(), cloned->getResults());
     return true;
+  }
+
+  Value getMemoryMask(Value pointer, Value originalMask) {
+    auto type = cast<RankedTensorType>(pointer.getType());
+    Value mask = broadcastRowValue(
+        validRows,
+        RankedTensorType::get(type.getShape(), rewriter.getI1Type()));
+    if (originalMask)
+      mask = rewriter.create<arith::AndIOp>(pointer.getLoc(), mask,
+                                            ensureRowDimension(originalMask));
+    return mask;
   }
 
   bool rewriteLoop(scf::ForOp old) {
@@ -670,7 +731,8 @@ public:
 
     auto current = matchDotRows(candidate.function);
     return success(current && current->anchor == candidate.anchor &&
-                   current->rowsPerProgram == candidate.rowsPerProgram);
+                   current->rowsPerProgram == candidate.rowsPerProgram &&
+                   current->runtimeGrid == candidate.runtimeGrid);
   }
 
   static std::unique_ptr<DotRowPlan> create(RowCandidate candidate,
@@ -698,18 +760,39 @@ public:
                      << "dot-row: skipped candidate: " << diag << "\n");
           return success();
         });
+    if (copy.runtimeGrid &&
+        failed(addProgramGridHiddenExtentArguments(copy.function)))
+      return nullptr;
+
     DotRowBuilder builder(rw, copy);
     if (!builder.run(copy.function) || failed(verify(*sandbox)))
       return nullptr;
+
+    if (copy.runtimeGrid) {
+      ProgramGridTransformContract contract;
+      contract.transforms.push_back({0, 0, copy.rowsPerProgram, false, false});
+      if (failed(setProgramGridTransformContract(*sandbox, contract)))
+        return nullptr;
+    }
 
     return std::unique_ptr<DotRowPlan>(
         new DotRowPlan(candidate, epoch, std::move(sandbox)));
   }
 
   LogicalResult apply(IRRewriter &rw) override {
-    // All fallible work is complete. Commit only the verified function body.
+    // Commit the verified body and, for runtime grids, its hidden arguments.
     ModuleOp module = candidate.function->getParentOfType<ModuleOp>();
     auto replacement = cast<triton::FuncOp>(&prepared->getBody()->front());
+    if (candidate.runtimeGrid) {
+      if (failed(commitProgramGridFunctionFromSandbox(candidate.function,
+                                                      replacement)))
+        return failure();
+      module->setAttr(
+          kProgramGridTransformsAttr,
+          prepared->getOperation()->getAttr(kProgramGridTransformsAttr));
+      return success();
+    }
+
     candidate.function.getBody().takeBody(replacement.getBody());
     module->setAttr(kCoalesceFactorAttr,
                     rw.getI32IntegerAttr(candidate.rowsPerProgram));
