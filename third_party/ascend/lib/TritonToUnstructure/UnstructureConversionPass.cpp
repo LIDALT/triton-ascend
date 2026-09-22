@@ -390,6 +390,8 @@ static bool isMaskOutTensorLanes(const std::optional<MaskState> &maskState,
   // other partial slices may leave physical lanes inactive and must use the
   // scalar-loop fallback. A missing or rank-incompatible MaskState is outside
   // this check and preserves the existing fast-path eligibility.
+  // A dynamic extent is conservatively treated as partial even if a particular
+  // runtime value happens to cover the full axis.
   if (!maskState || maskState->getRank() != tensorShape.size())
     return false;
 
